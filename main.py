@@ -2,68 +2,61 @@ import telebot
 import json
 import os
 
-TOKEN = '8298456178:AAHeL9GxfYfnW7nXQLVTG8Rwd-KyYqbewnE'  # Bu yerga o'zingizning bot tokeningizni yozing
-ADMIN_ID = 2097478310  # Bu yerga o'zingizning Telegram ID'ingizni yozing
-
+TOKEN = '8298456178:AAHeL9GxfYfnW7nXQLVTG8Rwd-KyYqbewnE'  # ← bu yerga o‘z tokeningizni yozing
 bot = telebot.TeleBot(TOKEN)
 
-MOVIES_FILE = 'movies.json'
+ADMIN_ID = 2097478310  # O'zingizning Telegram ID'ingizni yozing
 
+MOVIES_FILE = "movies.json"
 
+# 🎬 Kinolar ro'yxatini o'qish
 def load_movies():
     if not os.path.exists(MOVIES_FILE):
-        with open(MOVIES_FILE, 'w') as f:
+        with open(MOVIES_FILE, "w") as f:
             json.dump({}, f)
-    with open(MOVIES_FILE, 'r') as f:
+    with open(MOVIES_FILE, "r") as f:
         return json.load(f)
 
+# 🎬 Kode bo'yicha kino olish
+def get_movie_by_code(code):
+    movies = load_movies()
+    return movies.get(code)
 
-def save_movies(movies):
-    with open(MOVIES_FILE, 'w') as f:
-        json.dump(movies, f, indent=4)
-
-
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.send_message(message.chat.id, "🎬 Assalomu alaykum!\nKino kodini yuboring va men sizga kinoni jo‘nataman.")
-
-
-@bot.message_handler(commands=['add'])
-def add_movie(message):
-    if message.from_user.id != ADMIN_ID:
-        bot.reply_to(message, "Sizda ruxsat yo'q.")
-        return
-
-    try:
-        _, code = message.text.split(maxsplit=1)
-        msg = bot.reply_to(message, f"Kod qabul qilindi: `{code}`\nEndi kino faylini yuboring.", parse_mode='Markdown')
-        bot.register_next_step_handler(msg, lambda m: save_movie_file(m, code))
-    except:
-        bot.reply_to(message, "Iltimos, kodni to‘g‘ri yozing.\nMisol: `/add avengers1`")
-
-
-def save_movie_file(message, code):
-    if not message.video and not message.document:
-        bot.reply_to(message, "Faqat video yoki document yuboring.")
-        return
-
-    file_id = message.video.file_id if message.video else message.document.file_id
+# 🎬 Yangi kino qo'shish
+def add_movie(code, file_id):
     movies = load_movies()
     movies[code] = file_id
-    save_movies(movies)
-    bot.send_message(message.chat.id, f"✅ `{code}` kodi uchun kino saqlandi!", parse_mode='Markdown')
+    with open(MOVIES_FILE, "w") as f:
+        json.dump(movies, f)
 
+# 🚀 Start komandasi
+@bot.message_handler(commands=['start'])
+def start_message(message):
+    bot.send_message(message.chat.id, "🎬 Salom! Kino kodini yuboring, men sizga kinoni jo'nataman.")
 
+# 🧠 Kino kodi yuborilganda
 @bot.message_handler(func=lambda message: True)
-def get_movie(message):
+def handle_code(message):
     code = message.text.strip()
-    movies = load_movies()
-    if code in movies:
-        bot.send_chat_action(message.chat.id, 'upload_video')
-        bot.send_video(message.chat.id, movies[code], caption=f"🎬 Kino kodi: `{code}`", parse_mode='Markdown')
+    movie = get_movie_by_code(code)
+    if movie:
+        bot.send_video(message.chat.id, movie)
     else:
         bot.send_message(message.chat.id, "❌ Bunday kodli kino topilmadi.")
 
+# 🎬 Admin faqat kino fayl yuboradi va kod beriladi
+@bot.message_handler(content_types=['video'])
+def handle_video(message):
+    if message.from_user.id != ADMIN_ID:
+        return bot.send_message(message.chat.id, "❌ Siz admin emassiz.")
+    
+    msg = bot.send_message(message.chat.id, "📝 Iltimos, bu kino uchun kod yozing:")
+    bot.register_next_step_handler(msg, save_video, message.video.file_id)
 
-print("Bot ishga tushdi...")
-bot.polling()
+def save_video(message, file_id):
+    code = message.text.strip()
+    add_movie(code, file_id)
+    bot.send_message(message.chat.id, f"✅ Kino '{code}' kodi bilan saqlandi!")
+
+# 🔄 Botni ishga tushurish
+bot.infinity_polling()
